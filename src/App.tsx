@@ -2160,11 +2160,12 @@ const AuthModal = ({ isOpen, onClose, onLogin, message }: { isOpen: boolean, onC
         const data = await response.json();
         onLogin(data.user);
       } else {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({ error: `Server error: ${response.status}` }));
         setError(data.error || 'Action failed. Please try again.');
       }
     } catch (err) {
-      setError('Connection error. Please check your server.');
+      console.error('Auth error:', err);
+      setError(`Connection error: ${err instanceof Error ? err.message : 'Unknown error'}. Please check your server.`);
     } finally {
       setIsSubmitting(false);
     }
