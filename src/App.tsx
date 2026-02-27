@@ -556,6 +556,14 @@ const AdminPanel = ({ currentUser }: { currentUser: any }) => {
   const [categories, setCategories] = useState<any[]>([]);
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'courses' | 'users' | 'categories'>('overview');
   const [isAddingCourse, setIsAddingCourse] = useState(false);
+  const [isAddingUser, setIsAddingUser] = useState(false);
+  const [newUser, setNewUser] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'user',
+    subscription_status: 'free'
+  });
   const initialCourseState: CourseFormData = { 
     title: '', 
     description: '', 
@@ -745,6 +753,34 @@ const AdminPanel = ({ currentUser }: { currentUser: any }) => {
       }
     } catch (err) {
       console.error('Failed to add course', err);
+    }
+  };
+
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify(newUser)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUsers([...users, data.user]);
+        setIsAddingUser(false);
+        setNewUser({
+          name: '',
+          email: '',
+          password: '',
+          role: 'user',
+          subscription_status: 'free'
+        });
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to create user');
+      }
+    } catch (err) {
+      console.error('Failed to add user', err);
     }
   };
 
@@ -1005,7 +1041,92 @@ const AdminPanel = ({ currentUser }: { currentUser: any }) => {
       )}
 
       {activeSubTab === 'users' && (
-        <div className="bg-white rounded-[2rem] overflow-hidden border border-brand-ink/5 shadow-sm">
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-brand-teal">User Management</h2>
+            <button 
+              onClick={() => setIsAddingUser(!isAddingUser)}
+              className="flex items-center gap-2 px-6 py-3 bg-brand-teal text-white rounded-2xl font-bold shadow-xl hover:scale-105 transition-all"
+            >
+              {isAddingUser ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+              {isAddingUser ? 'Cancel' : 'Create Account'}
+            </button>
+          </div>
+
+          {isAddingUser && (
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-card p-8 rounded-[2rem] border border-brand-teal/10"
+            >
+              <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-brand-ink/30 uppercase tracking-widest ml-1">Full Name</label>
+                  <input 
+                    type="text" 
+                    value={newUser.name}
+                    onChange={e => setNewUser({...newUser, name: e.target.value})}
+                    className="w-full px-6 py-4 bg-brand-ink/[0.02] border border-brand-ink/5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
+                    placeholder="John Doe"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-brand-ink/30 uppercase tracking-widest ml-1">Email Address</label>
+                  <input 
+                    type="email" 
+                    value={newUser.email}
+                    onChange={e => setNewUser({...newUser, email: e.target.value})}
+                    className="w-full px-6 py-4 bg-brand-ink/[0.02] border border-brand-ink/5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
+                    placeholder="john@example.com"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-brand-ink/30 uppercase tracking-widest ml-1">Password</label>
+                  <input 
+                    type="password" 
+                    value={newUser.password}
+                    onChange={e => setNewUser({...newUser, password: e.target.value})}
+                    className="w-full px-6 py-4 bg-brand-ink/[0.02] border border-brand-ink/5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-brand-ink/30 uppercase tracking-widest ml-1">Role</label>
+                    <select 
+                      value={newUser.role}
+                      onChange={e => setNewUser({...newUser, role: e.target.value})}
+                      className="w-full px-6 py-4 bg-brand-ink/[0.02] border border-brand-ink/5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all appearance-none"
+                    >
+                      <option value="user">Student</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-brand-ink/30 uppercase tracking-widest ml-1">Subscription</label>
+                    <select 
+                      value={newUser.subscription_status}
+                      onChange={e => setNewUser({...newUser, subscription_status: e.target.value})}
+                      className="w-full px-6 py-4 bg-brand-ink/[0.02] border border-brand-ink/5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all appearance-none"
+                    >
+                      <option value="free">Free</option>
+                      <option value="premium">Premium</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="md:col-span-2 flex justify-end">
+                  <button type="submit" className="px-10 py-4 bg-brand-teal text-white rounded-2xl font-bold shadow-xl shadow-brand-teal/20 hover:scale-105 transition-all">
+                    Create User Account
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          )}
+
+          <div className="bg-white rounded-[2rem] overflow-hidden border border-brand-ink/5 shadow-sm">
           <table className="w-full text-left">
             <thead className="bg-brand-ink/[0.02] text-brand-ink/30 text-[10px] font-bold uppercase tracking-[0.1em]">
               <tr>
@@ -1079,7 +1200,8 @@ const AdminPanel = ({ currentUser }: { currentUser: any }) => {
             </tbody>
           </table>
         </div>
-      )}
+      </div>
+    )}
 
       {/* Undo Notification */}
       <AnimatePresence>

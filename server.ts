@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const dbPath = process.env.VERCEL ? '/tmp/govlead.db' : 'govlead.db';
+console.log(`Initializing database at: ${dbPath}`);
 const db = new Database(dbPath);
 
 // Initialize Database
@@ -195,14 +196,15 @@ async function startServer() {
   app.post('/api/auth/signup', (req, res) => {
     const { name, email, password } = req.body;
     try {
-      const info = db.prepare('INSERT INTO users (name, email, password) VALUES (?, ?, ?)').run(name, email, password);
+      const info = db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run(name, email, password, 'user');
       const user = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
       res.json({ user });
     } catch (error: any) {
+      console.error('Signup error:', error);
       if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
         res.status(400).json({ error: 'Email already exists' });
       } else {
-        res.status(500).json({ error: 'Failed to create account' });
+        res.status(500).json({ error: 'Failed to create account: ' + error.message });
       }
     }
   });
@@ -288,6 +290,28 @@ async function startServer() {
     } catch (error) {
       console.error('Failed to delete user:', error);
       res.status(500).json({ error: 'Failed to delete user and related data: ' + (error instanceof Error ? error.message : String(error)) });
+    }
+  });
+
+  app.post('/api/admin/users', isAdmin, (req, res) => {
+    const { name, email, password, role, subscription_status } = req.body;
+    try {
+      const info = db.prepare('INSERT INTO users (name, email, password, role, subscription_status) VALUES (?, ?, ?, ?, ?)').run(
+        name, 
+        email, 
+        password, 
+        role || 'user', 
+        subscription_status || 'free'
+      );
+      const user = db.prepare('SELECT id, name, email, role, subscription_status, created_at FROM users WHERE id = ?').get(info.lastInsertRowid);
+      res.json({ user });
+    } catch (error: any) {
+      console.error('Admin user creation error:', error);
+      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+        res.status(400).json({ error: 'Email already exists' });
+      } else {
+        res.status(500).json({ error: 'Failed to create user: ' + error.message });
+      }
     }
   });
 
