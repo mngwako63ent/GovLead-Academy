@@ -3,12 +3,40 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import Database from 'better-sqlite3';
 import dotenv from 'dotenv';
+import multer from 'multer';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const dbPath = process.env.VERCEL ? '/tmp/govlead.db' : 'govlead.db';
 console.log(`Initializing database at: ${dbPath}`);
 const db = new Database(dbPath);
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Configure multer for file storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
 
 // Initialize Database
 db.exec(`
@@ -45,8 +73,21 @@ const columns = [
 const courseColumns = [
   'is_paid BOOLEAN DEFAULT 0',
   'price REAL DEFAULT 0',
-  'learning_outcomes TEXT'
+  'learning_outcomes TEXT',
+  'syllabus_url TEXT'
 ];
+
+const lessonColumns = [
+  'document_url TEXT'
+];
+
+lessonColumns.forEach(col => {
+  try {
+    db.exec(`ALTER TABLE lessons ADD COLUMN ${col};`);
+  } catch (e) {
+    // Column likely already exists
+  }
+});
 
 columns.forEach(col => {
   try {
@@ -107,6 +148,7 @@ db.exec(`
     category_id INTEGER,
     difficulty TEXT,
     thumbnail_url TEXT,
+    syllabus_url TEXT,
     status TEXT DEFAULT 'draft',
     is_paid BOOLEAN DEFAULT 0,
     price REAL DEFAULT 0,
@@ -128,6 +170,7 @@ db.exec(`
     module_id INTEGER,
     title TEXT,
     video_url TEXT,
+    document_url TEXT,
     duration INTEGER,
     order_index INTEGER,
     content_markdown TEXT,
@@ -149,23 +192,172 @@ db.exec(`
   INSERT OR IGNORE INTO users (name, email, password, role) VALUES ('Alex Rivera', 'alex@example.com', 'password123', 'user');
   INSERT OR IGNORE INTO users (name, email, password, role) VALUES ('Admin User', 'admin@govlead.com', 'admin123', 'admin');
   
+  INSERT OR IGNORE INTO categories (name, slug) VALUES ('Strategy / Leadership', 'strategy-leadership');
   INSERT OR IGNORE INTO categories (name, slug) VALUES ('AI', 'ai');
   INSERT OR IGNORE INTO categories (name, slug) VALUES ('Scaling', 'scaling');
   INSERT OR IGNORE INTO categories (name, slug) VALUES ('Branding', 'branding');
-  INSERT OR IGNORE INTO categories (name, slug) VALUES ('Leadership', 'leadership');
 
-  INSERT OR IGNORE INTO courses (title, description, category_id, difficulty, thumbnail_url, status) 
-  VALUES ('AI-Driven Business Systems', 'Master the art of automating your operations with cutting-edge AI tools.', 1, 'Intermediate', 'https://picsum.photos/seed/ai/800/450', 'published');
-  
-  INSERT OR IGNORE INTO courses (title, description, category_id, difficulty, thumbnail_url, status) 
-  VALUES ('Scaling to 7 Figures', 'A blueprint for high-growth startups ready to dominate their market.', 2, 'Advanced', 'https://picsum.photos/seed/scale/800/450', 'published');
-
-  INSERT OR IGNORE INTO courses (title, description, category_id, difficulty, thumbnail_url, status) 
-  VALUES ('Premium Brand Authority', 'Build a brand that commands attention and premium pricing.', 3, 'Beginner', 'https://picsum.photos/seed/brand/800/450', 'published');
-
-  INSERT OR IGNORE INTO courses (title, description, category_id, difficulty, thumbnail_url, status) 
-  VALUES ('Leadership Operating System', 'Frameworks for building and managing high-performance teams.', 4, 'Intermediate', 'https://picsum.photos/seed/lead/800/450', 'published');
+  -- Cleanup old mock courses
+  DELETE FROM courses WHERE title IN ('AI-Driven Business Systems', 'Scaling to 7 Figures', 'Premium Brand Authority', 'Leadership Operating System');
 `);
+
+const seedCoreCourses = () => {
+  const strategyCategory = db.prepare("SELECT id FROM categories WHERE slug = 'strategy-leadership'").get();
+  if (!strategyCategory) return;
+
+  const coreCourses = [
+    {
+      title: "Building Your Strategic Foundation",
+      description: "Build clarity around your internal drivers, long-term direction, and financial thresholds. This course establishes the strategic spine of your business.",
+      modules: [
+        "Vision vs Mission vs Objectives",
+        "Strategic Intent & Long-Term Direction",
+        "Financial Hurdles vs Business Objectives",
+        "Shareholders vs Stakeholders",
+        "Leadership Alignment Around Purpose"
+      ],
+      outcomes: ["Define clear business vision and mission", "Understand strategic intent", "Set financial hurdles", "Align leadership team"]
+    },
+    {
+      title: "Understanding Your Market & Industry Structure",
+      description: "Analyze the external environment to identify opportunities and threats. Learn to navigate industry forces and competitive dynamics.",
+      modules: [
+        "Macro Environment Analysis (PESTEL)",
+        "Industry Life Cycle & Evolution",
+        "Porter's Five Forces Framework",
+        "Competitor Analysis & Benchmarking",
+        "Identifying Strategic Groups"
+      ],
+      outcomes: ["Conduct PESTEL analysis", "Evaluate industry life cycles", "Apply Porter's Five Forces", "Analyze competitors"]
+    },
+    {
+      title: "Deep Customer Strategy Masterclass",
+      description: "Master the art of customer-centric growth. Understand customer needs, behaviors, and decision-making processes to build lasting relationships.",
+      modules: [
+        "The Customer Decision Journey",
+        "Jobs to be Done Framework",
+        "Customer Persona Development",
+        "Empathy Mapping & Insight Generation",
+        "Analyzing Customer Pain Points"
+      ],
+      outcomes: ["Map customer decision journeys", "Apply Jobs to be Done", "Create detailed personas", "Generate customer insights"]
+    },
+    {
+      title: "Segmentation & Targeting for Profitable Growth",
+      description: "Learn how to divide your market into meaningful segments and choose the most profitable ones to target with precision.",
+      modules: [
+        "Bases for Market Segmentation",
+        "Evaluating Segment Attractiveness",
+        "Selecting Target Segments",
+        "Niche vs Mass Market Strategies",
+        "Dynamic Segmentation Models"
+      ],
+      outcomes: ["Segment markets effectively", "Assess segment profitability", "Develop targeting strategies", "Understand niche dynamics"]
+    },
+    {
+      title: "Positioning & Brand Power Strategy",
+      description: "Create a unique space in your customers' minds. Build a powerful brand that stands out and commands a premium.",
+      modules: [
+        "Developing a Unique Value Proposition",
+        "Positioning Maps & Perceptual Mapping",
+        "Brand Identity & Personality",
+        "Crafting the Positioning Statement",
+        "Brand Equity & Awareness"
+      ],
+      outcomes: ["Craft unique value propositions", "Create positioning maps", "Define brand identity", "Write positioning statements"]
+    },
+    {
+      title: "Customer Retention & Lifetime Value Strategy",
+      description: "Focus on keeping the customers you have. Learn strategies to increase loyalty, reduce churn, and maximize lifetime value.",
+      modules: [
+        "Calculating Customer Lifetime Value (CLV)",
+        "Strategies for Reducing Churn",
+        "Loyalty Programs & Incentives",
+        "Building Customer Communities",
+        "Feedback Loops & Continuous Improvement"
+      ],
+      outcomes: ["Calculate CLV", "Implement retention strategies", "Design loyalty programs", "Build customer communities"]
+    },
+    {
+      title: "Designing Powerful Market Offerings",
+      description: "Design products and services that solve real problems. Learn to bundle features and benefits into compelling market offerings.",
+      modules: [
+        "Product/Service Design Principles",
+        "Bundling & Pricing Strategies",
+        "Service Excellence & Experience Design",
+        "Innovation & New Product Development",
+        "Managing the Product Portfolio"
+      ],
+      outcomes: ["Design compelling offerings", "Develop pricing strategies", "Create service experiences", "Manage product portfolios"]
+    },
+    {
+      title: "Organising for Market Success",
+      description: "Align your internal structure with your market strategy. Build the right teams and processes to deliver exceptional value.",
+      modules: [
+        "Organizational Structure & Design",
+        "Building High-Performance Teams",
+        "Process Optimization & Efficiency",
+        "Culture as a Strategic Asset",
+        "Managing Change & Transformation"
+      ],
+      outcomes: ["Design effective organizations", "Build high-performance teams", "Optimize business processes", "Leverage company culture"]
+    },
+    {
+      title: "SCORPIO Strategic Coordination Blueprint",
+      description: "A proprietary framework for coordinating all aspects of your business strategy for maximum impact and synergy.",
+      modules: [
+        "Introduction to SCORPIO Framework",
+        "Strategic Alignment & Integration",
+        "Resource Allocation & Optimization",
+        "Performance Monitoring & Control",
+        "Scaling with SCORPIO"
+      ],
+      outcomes: ["Apply SCORPIO framework", "Coordinate strategic activities", "Optimize resource use", "Monitor performance effectively"]
+    },
+    {
+      title: "From Strategy to Implementation",
+      description: "Turn your strategic plans into reality. Learn the tools and techniques for effective execution and project management.",
+      modules: [
+        "Setting SMART Objectives",
+        "Action Planning & Roadmapping",
+        "Project Management Fundamentals",
+        "Overcoming Implementation Barriers",
+        "Measuring Success & Iterating"
+      ],
+      outcomes: ["Set SMART objectives", "Create strategic roadmaps", "Apply project management", "Execute strategy effectively"]
+    }
+  ];
+
+  for (const course of coreCourses) {
+    const existing = db.prepare("SELECT id FROM courses WHERE title = ?").get(course.title);
+    if (!existing) {
+      const info = db.prepare(`
+        INSERT INTO courses (title, description, category_id, difficulty, status, learning_outcomes, thumbnail_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        course.title,
+        course.description,
+        strategyCategory.id,
+        'Intermediate',
+        'published',
+        JSON.stringify(course.outcomes),
+        `https://picsum.photos/seed/${course.title.replace(/\s/g, '')}/800/450`
+      );
+
+      const courseId = info.lastInsertRowid;
+      course.modules.forEach((moduleTitle, index) => {
+        const modInfo = db.prepare("INSERT INTO modules (course_id, title, order_index) VALUES (?, ?, ?)").run(courseId, moduleTitle, index + 1);
+        const moduleId = modInfo.lastInsertRowid;
+        
+        // Add a dummy lesson for each module
+        db.prepare("INSERT INTO lessons (module_id, title, video_url, duration, order_index) VALUES (?, ?, ?, ?, ?)")
+          .run(moduleId, `Introduction to ${moduleTitle}`, "https://www.youtube.com/embed/dQw4w9WgXcQ", 15, 1);
+      });
+    }
+  }
+};
+
+seedCoreCourses();
 
 async function startServer() {
   const app = express();
@@ -210,8 +402,58 @@ async function startServer() {
   });
 
   app.get('/api/courses', (req, res) => {
+    const userId = req.headers['x-user-id'];
     const courses = db.prepare("SELECT * FROM courses WHERE status = 'published'").all();
-    res.json(courses);
+    
+    const coursesWithProgress = courses.map(course => {
+      let progress = undefined;
+      if (userId) {
+        const enrollment = db.prepare('SELECT 1 FROM enrollments WHERE user_id = ? AND course_id = ?').get(userId, course.id);
+        if (enrollment) {
+          const totalLessons = db.prepare(`
+            SELECT COUNT(l.id) as count 
+            FROM lessons l 
+            JOIN modules m ON l.module_id = m.id 
+            WHERE m.course_id = ?
+          `).get(course.id).count;
+
+          const completedLessons = db.prepare(`
+            SELECT COUNT(up.lesson_id) as count 
+            FROM user_progress up 
+            JOIN lessons l ON up.lesson_id = l.id 
+            JOIN modules m ON l.module_id = m.id 
+            WHERE m.course_id = ? AND up.user_id = ? AND up.completed = 1
+          `).get(course.id, userId).count;
+
+          progress = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+        }
+      }
+      return { ...course, progress };
+    });
+
+    res.json(coursesWithProgress);
+  });
+
+  app.get('/api/courses/:id', (req, res) => {
+    const { id } = req.params;
+    const course = db.prepare("SELECT * FROM courses WHERE id = ?").get(id);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+    res.json(course);
+  });
+
+  app.get('/api/courses/:id/curriculum', (req, res) => {
+    const { id } = req.params;
+    const modules = db.prepare("SELECT * FROM modules WHERE course_id = ? ORDER BY order_index ASC").all(id);
+    const curriculum = modules.map(m => {
+      const lessons = db.prepare("SELECT * FROM lessons WHERE module_id = ? ORDER BY order_index ASC").all(m.id);
+      return { ...m, lessons };
+    });
+    res.json(curriculum);
+  });
+
+  app.get('/api/categories', (req, res) => {
+    const categories = db.prepare("SELECT * FROM categories").all();
+    res.json(categories);
   });
 
   // Admin Routes (Simple role check - in a real app this would use JWT/Sessions)
@@ -321,16 +563,17 @@ async function startServer() {
   });
 
   app.post('/api/admin/courses', isAdmin, (req, res) => {
-    const { title, description, category_id, difficulty, thumbnail_url, status, is_paid, price, learning_outcomes } = req.body;
+    const { title, description, category_id, difficulty, thumbnail_url, syllabus_url, status, is_paid, price, learning_outcomes } = req.body;
     const info = db.prepare(`
-      INSERT INTO courses (title, description, category_id, difficulty, thumbnail_url, status, is_paid, price, learning_outcomes) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO courses (title, description, category_id, difficulty, thumbnail_url, syllabus_url, status, is_paid, price, learning_outcomes) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       title, 
       description, 
       category_id, 
       difficulty, 
       thumbnail_url, 
+      syllabus_url || '',
       status || 'draft',
       is_paid ? 1 : 0,
       price || 0,
@@ -341,10 +584,10 @@ async function startServer() {
 
   app.put('/api/admin/courses/:id', isAdmin, (req, res) => {
     const { id } = req.params;
-    const { title, description, category_id, difficulty, thumbnail_url, status, is_paid, price, learning_outcomes } = req.body;
+    const { title, description, category_id, difficulty, thumbnail_url, syllabus_url, status, is_paid, price, learning_outcomes } = req.body;
     db.prepare(`
       UPDATE courses 
-      SET title = ?, description = ?, category_id = ?, difficulty = ?, thumbnail_url = ?, status = ?, is_paid = ?, price = ?, learning_outcomes = ?
+      SET title = ?, description = ?, category_id = ?, difficulty = ?, thumbnail_url = ?, syllabus_url = ?, status = ?, is_paid = ?, price = ?, learning_outcomes = ?
       WHERE id = ?
     `).run(
       title, 
@@ -352,6 +595,7 @@ async function startServer() {
       category_id, 
       difficulty, 
       thumbnail_url, 
+      syllabus_url || '',
       status, 
       is_paid ? 1 : 0,
       price || 0,
@@ -370,6 +614,14 @@ async function startServer() {
   app.get('/api/admin/categories', isAdmin, (req, res) => {
     const categories = db.prepare('SELECT * FROM categories').all();
     res.json(categories);
+  });
+
+  app.post('/api/admin/upload', isAdmin, upload.single('file'), (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({ url: fileUrl });
   });
 
   app.post('/api/admin/categories', isAdmin, (req, res) => {
@@ -392,14 +644,21 @@ async function startServer() {
 
   app.post('/api/admin/courses/:id/lessons', isAdmin, (req, res) => {
     const { id } = req.params;
-    const { title, video_url, duration } = req.body;
+    const { title, video_url, document_url, duration } = req.body;
     let module = db.prepare('SELECT id FROM modules WHERE course_id = ?').get(id);
     if (!module) {
       const info = db.prepare('INSERT INTO modules (course_id, title, order_index) VALUES (?, ?, ?)').run(id, 'Main Module', 0);
       module = { id: info.lastInsertRowid };
     }
     const orderIndex = db.prepare('SELECT COUNT(*) as count FROM lessons WHERE module_id = ?').get(module.id).count;
-    const info = db.prepare('INSERT INTO lessons (module_id, title, video_url, duration, order_index) VALUES (?, ?, ?, ?, ?)').run(module.id, title, video_url, duration, orderIndex);
+    const info = db.prepare('INSERT INTO lessons (module_id, title, video_url, document_url, duration, order_index) VALUES (?, ?, ?, ?, ?, ?)').run(
+      module.id,
+      title,
+      video_url,
+      document_url || '',
+      duration || 0,
+      orderIndex
+    );
     res.json({ id: info.lastInsertRowid });
   });
 
@@ -424,7 +683,28 @@ async function startServer() {
       JOIN enrollments e ON c.id = e.course_id 
       WHERE e.user_id = ?
     `).all(userId);
-    res.json(courses);
+
+    const coursesWithProgress = courses.map(course => {
+      const totalLessons = db.prepare(`
+        SELECT COUNT(l.id) as count 
+        FROM lessons l 
+        JOIN modules m ON l.module_id = m.id 
+        WHERE m.course_id = ?
+      `).get(course.id).count;
+
+      const completedLessons = db.prepare(`
+        SELECT COUNT(up.lesson_id) as count 
+        FROM user_progress up 
+        JOIN lessons l ON up.lesson_id = l.id 
+        JOIN modules m ON l.module_id = m.id 
+        WHERE m.course_id = ? AND up.user_id = ? AND up.completed = 1
+      `).get(course.id, userId).count;
+
+      const progress = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+      return { ...course, progress };
+    });
+
+    res.json(coursesWithProgress);
   });
 
   app.post('/api/lessons/:id/progress', (req, res) => {
@@ -473,14 +753,35 @@ async function startServer() {
 
     const enrolledCount = db.prepare('SELECT COUNT(*) as count FROM enrollments WHERE user_id = ?').get(userId).count;
     
-    const progressData = db.prepare(`
-      SELECT SUM(l.duration) as total_minutes
-      FROM user_progress up
-      JOIN lessons l ON up.lesson_id = l.id
-      WHERE up.user_id = ? AND up.completed = 1
-    `).get(userId);
+    const lessonsDone = db.prepare('SELECT COUNT(*) as count FROM user_progress WHERE user_id = ? AND completed = 1').get(userId).count;
     
-    const hoursCompleted = Math.round((progressData.total_minutes || 0) / 60);
+    // Calculate overall completion percentage
+    const totalLessonsInEnrolled = db.prepare(`
+      SELECT COUNT(l.id) as count 
+      FROM lessons l
+      JOIN modules m ON l.module_id = m.id
+      JOIN enrollments e ON m.course_id = e.course_id
+      WHERE e.user_id = ?
+    `).get(userId).count;
+
+    const overallCompletion = totalLessonsInEnrolled > 0 
+      ? Math.round((lessonsDone / totalLessonsInEnrolled) * 100) 
+      : 0;
+
+    // Calculate certificates (completed courses)
+    const completedCourses = db.prepare(`
+      SELECT COUNT(*) as count FROM (
+        SELECT e.course_id
+        FROM enrollments e
+        JOIN modules m ON e.course_id = m.course_id
+        JOIN lessons l ON m.id = l.module_id
+        LEFT JOIN user_progress up ON l.id = up.lesson_id AND up.user_id = e.user_id
+        WHERE e.user_id = ?
+        GROUP BY e.course_id
+        HAVING COUNT(l.id) = SUM(CASE WHEN up.completed = 1 THEN 1 ELSE 0 END)
+        AND COUNT(l.id) > 0
+      )
+    `).get(userId).count;
 
     const recentCourse = db.prepare(`
       SELECT c.*, MAX(up.last_watched_timestamp) as last_access
@@ -494,14 +795,21 @@ async function startServer() {
       LIMIT 1
     `).get(userId);
 
-    // Mocking streak and certificates for now as they aren't fully tracked in DB yet
+    const lessonsThisWeek = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM user_progress 
+      WHERE user_id = ? AND completed = 1 AND last_watched_timestamp >= date('now', '-7 days')
+    `).get(userId).count;
+
     res.json({
       enrolledCount,
-      hoursCompleted,
-      streak: 5, // Mock
-      certificates: 0, // Mock
+      lessonsDone,
+      lessonsThisWeek,
+      overallCompletion,
+      certificates: completedCourses,
       recentCourse: recentCourse || null,
-      roadmapStage: enrolledCount > 3 ? 'Strategy' : 'Foundation' // Simple logic
+      streak: 5, // Keep mock for now or implement if needed
+      roadmapStage: enrolledCount > 3 ? 'Strategy' : 'Foundation'
     });
   });
 
@@ -588,6 +896,9 @@ async function startServer() {
       }
     }
   });
+  // Serve static files from public directory
+  app.use(express.static(path.join(__dirname, '..', 'public')));
+
   if (process.env.NODE_ENV === 'production') {
     const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath));

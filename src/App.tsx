@@ -15,6 +15,8 @@ import {
   PlayCircle, 
   CheckCircle2, 
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   TrendingUp,
   Users,
   Award,
@@ -38,7 +40,10 @@ import {
   Zap,
   Rocket,
   Clock,
-  Flame
+  Flame,
+  GraduationCap,
+  Upload,
+  Download
 } from 'lucide-react';
 
 // --- Types ---
@@ -70,58 +75,7 @@ interface CourseFormData {
 }
 
 // --- Mock Data ---
-const MOCK_COURSES: Course[] = [
-  {
-    id: 1,
-    title: "AI-Driven Business Systems",
-    description: "Master the art of automating your operations with cutting-edge AI tools.",
-    category: "AI",
-    difficulty: "Intermediate",
-    thumbnail: "https://picsum.photos/seed/ai/800/450",
-    status: "published",
-    is_paid: false,
-    price: 0,
-    learning_outcomes: ["Automate workflows", "Implement AI agents"],
-    progress: 45
-  },
-  {
-    id: 2,
-    title: "Scaling to 7 Figures",
-    description: "A blueprint for high-growth startups ready to dominate their market.",
-    category: "Scaling",
-    difficulty: "Advanced",
-    thumbnail: "https://picsum.photos/seed/scale/800/450",
-    status: "published",
-    is_paid: true,
-    price: 99,
-    learning_outcomes: ["Market domination", "High-growth strategies"],
-    progress: 12
-  },
-  {
-    id: 3,
-    title: "Premium Brand Authority",
-    description: "Build a brand that commands attention and premium pricing.",
-    category: "Branding",
-    difficulty: "Beginner",
-    thumbnail: "https://picsum.photos/seed/brand/800/450",
-    status: "published",
-    is_paid: false,
-    price: 0,
-    learning_outcomes: ["Brand positioning", "Command attention"]
-  },
-  {
-    id: 4,
-    title: "Leadership Operating System",
-    description: "Frameworks for building and managing high-performance teams.",
-    category: "Leadership",
-    difficulty: "Intermediate",
-    thumbnail: "https://picsum.photos/seed/lead/800/450",
-    status: "published",
-    is_paid: true,
-    price: 149,
-    learning_outcomes: ["Team management", "High-performance frameworks"]
-  }
-];
+const MOCK_COURSES: Course[] = [];
 
 // --- Components ---
 
@@ -296,6 +250,32 @@ const CourseForm = ({
   isEditing?: boolean
 }) => {
   const [dragActive, setDragActive] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/admin/upload', {
+        method: 'POST',
+        headers: { 'x-user-id': course.user_id?.toString() || '2' }, // Fallback to admin ID if needed
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCourse({ ...course, syllabus_url: data.url });
+      }
+    } catch (err) {
+      console.error('Upload failed', err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleAddOutcome = () => {
     setCourse({ ...course, learning_outcomes: [...(course.learning_outcomes || []), ''] });
@@ -488,6 +468,24 @@ const CourseForm = ({
           </div>
 
           <div className="space-y-4">
+            <label className="block text-xs font-bold text-brand-ink/40 uppercase tracking-widest">Course Syllabus / Resources</label>
+            <div className="flex gap-4">
+              <input 
+                type="text" 
+                value={course.syllabus_url || ''}
+                onChange={e => setCourse({...course, syllabus_url: e.target.value})}
+                className="flex-1 px-6 py-4 bg-white border border-brand-ink/5 rounded-2xl focus:ring-2 focus:ring-brand-teal/20 outline-none transition-all text-sm"
+                placeholder="URL to course syllabus or resource"
+              />
+              <label className="cursor-pointer px-8 py-4 bg-brand-orange/10 text-brand-orange rounded-2xl font-bold text-sm hover:bg-brand-orange/20 transition-all flex items-center gap-2">
+                <Upload className="w-5 h-5" />
+                {isUploading ? 'Uploading...' : 'Upload PDF'}
+                <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} />
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-4">
             <div className="flex justify-between items-center">
               <label className="block text-xs font-bold text-brand-ink/40 uppercase tracking-widest">What Students Will Learn</label>
               <button 
@@ -579,7 +577,8 @@ const AdminPanel = ({ currentUser }: { currentUser: any }) => {
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<number | null>(null);
   const [lessons, setLessons] = useState<any[]>([]);
-  const [newLesson, setNewLesson] = useState({ title: '', video_url: '', duration: 0 });
+  const [newLesson, setNewLesson] = useState({ title: '', video_url: '', document_url: '', duration: 0 });
+  const [isUploading, setIsUploading] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [deletingCourseId, setDeletingCourseId] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState<{
@@ -600,6 +599,35 @@ const AdminPanel = ({ currentUser }: { currentUser: any }) => {
     }
   }, [editingCourseId]);
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'video' | 'document') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/admin/upload', {
+        method: 'POST',
+        headers: { 'x-user-id': currentUser.id.toString() },
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (type === 'video') {
+          setNewLesson({ ...newLesson, video_url: data.url });
+        } else {
+          setNewLesson({ ...newLesson, document_url: data.url });
+        }
+      }
+    } catch (err) {
+      console.error('Upload failed', err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleAddLesson = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -611,7 +639,7 @@ const AdminPanel = ({ currentUser }: { currentUser: any }) => {
       if (res.ok) {
         const data = await res.json();
         setLessons([...lessons, { ...newLesson, id: data.id }]);
-        setNewLesson({ title: '', video_url: '', duration: 0 });
+        setNewLesson({ title: '', video_url: '', document_url: '', duration: 0 });
       }
     } catch (err) {
       console.error(err);
@@ -1245,33 +1273,71 @@ const AdminPanel = ({ currentUser }: { currentUser: any }) => {
               <button onClick={() => setEditingCourseId(null)} className="p-2 hover:bg-brand-ink/5 rounded-full"><X className="w-6 h-6" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-8 space-y-8">
-              <form onSubmit={handleAddLesson} className="glass-card p-6 rounded-2xl grid grid-cols-3 gap-4">
-                <div className="col-span-3 font-bold text-brand-teal text-sm">Add New Lesson</div>
-                <input 
-                  placeholder="Lesson Title" 
-                  value={newLesson.title}
-                  onChange={e => setNewLesson({...newLesson, title: e.target.value})}
-                  className="px-4 py-2 border border-brand-ink/5 rounded-xl bg-white"
-                  required
-                />
-                <input 
-                  placeholder="Video URL (YouTube/Vimeo)" 
-                  value={newLesson.video_url}
-                  onChange={e => setNewLesson({...newLesson, video_url: e.target.value})}
-                  className="px-4 py-2 border border-brand-ink/5 rounded-xl bg-white"
-                  required
-                />
-                <div className="flex gap-2">
+              <form onSubmit={handleAddLesson} className="glass-card p-6 rounded-2xl space-y-4">
+                <div className="font-bold text-brand-teal text-sm">Add New Lesson</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <input 
-                    type="number"
-                    placeholder="Min" 
-                    value={newLesson.duration || ''}
-                    onChange={e => setNewLesson({...newLesson, duration: parseInt(e.target.value)})}
-                    className="w-20 px-4 py-2 border border-brand-ink/5 rounded-xl bg-white"
+                    placeholder="Lesson Title" 
+                    value={newLesson.title}
+                    onChange={e => setNewLesson({...newLesson, title: e.target.value})}
+                    className="px-4 py-2 border border-brand-ink/5 rounded-xl bg-white w-full"
                     required
                   />
-                  <button type="submit" className="flex-1 bg-brand-teal text-white rounded-xl font-bold">Add</button>
+                  <div className="flex gap-2">
+                    <input 
+                      type="number"
+                      placeholder="Duration (Min)" 
+                      value={newLesson.duration || ''}
+                      onChange={e => setNewLesson({...newLesson, duration: parseInt(e.target.value)})}
+                      className="flex-1 px-4 py-2 border border-brand-ink/5 rounded-xl bg-white"
+                      required
+                    />
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-brand-ink/40 uppercase tracking-widest">Video Content</label>
+                    <div className="flex gap-2">
+                      <input 
+                        placeholder="Video URL (YouTube/Vimeo)" 
+                        value={newLesson.video_url}
+                        onChange={e => setNewLesson({...newLesson, video_url: e.target.value})}
+                        className="flex-1 px-4 py-2 border border-brand-ink/5 rounded-xl bg-white text-sm"
+                      />
+                      <label className="cursor-pointer px-4 py-2 bg-brand-teal/10 text-brand-teal rounded-xl font-bold text-xs hover:bg-brand-teal/20 transition-colors flex items-center gap-2">
+                        <Upload className="w-4 h-4" />
+                        Upload
+                        <input type="file" accept="video/*" className="hidden" onChange={e => handleFileUpload(e, 'video')} />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-brand-ink/40 uppercase tracking-widest">Resource Document</label>
+                    <div className="flex gap-2">
+                      <input 
+                        placeholder="Document URL (Optional)" 
+                        value={newLesson.document_url}
+                        onChange={e => setNewLesson({...newLesson, document_url: e.target.value})}
+                        className="flex-1 px-4 py-2 border border-brand-ink/5 rounded-xl bg-white text-sm"
+                      />
+                      <label className="cursor-pointer px-4 py-2 bg-brand-orange/10 text-brand-orange rounded-xl font-bold text-xs hover:bg-brand-orange/20 transition-colors flex items-center gap-2">
+                        <Upload className="w-4 h-4" />
+                        Upload
+                        <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" className="hidden" onChange={e => handleFileUpload(e, 'document')} />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={isUploading}
+                  className="w-full py-3 bg-brand-teal text-white rounded-xl font-bold shadow-lg shadow-brand-teal/20 hover:scale-[1.02] transition-all disabled:opacity-50"
+                >
+                  {isUploading ? 'Uploading File...' : 'Add Lesson to Module'}
+                </button>
               </form>
 
               <div className="space-y-4">
@@ -1281,7 +1347,18 @@ const AdminPanel = ({ currentUser }: { currentUser: any }) => {
                       <div className="w-8 h-8 bg-brand-ink/5 rounded-lg flex items-center justify-center font-bold text-brand-ink/40 text-xs">{i + 1}</div>
                       <div>
                         <div className="font-bold text-brand-teal">{lesson.title}</div>
-                        <div className="text-[10px] text-brand-ink/40 font-mono">{lesson.video_url}</div>
+                        <div className="flex items-center gap-3 mt-1">
+                          <div className="flex items-center gap-1 text-[10px] text-brand-ink/40 font-mono">
+                            <PlayCircle className="w-3 h-3" />
+                            {lesson.video_url.length > 30 ? lesson.video_url.substring(0, 30) + '...' : lesson.video_url}
+                          </div>
+                          {lesson.document_url && (
+                            <div className="flex items-center gap-1 text-[10px] text-brand-orange font-mono">
+                              <FileText className="w-3 h-3" />
+                              Resource Attached
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -1530,18 +1607,22 @@ const ProfileSettings = ({ user, onUpdate }: { user: any, onUpdate: (user: any) 
 };
 
 const CourseViewer = ({ course, currentUser, onBack }: { course: any, currentUser: any, onBack: () => void }) => {
-  const [lessons, setLessons] = useState<any[]>([]);
+  const [curriculum, setCurriculum] = useState<any[]>([]);
   const [activeLesson, setActiveLesson] = useState<any>(null);
+  const [expandedModules, setExpandedModules] = useState<number[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
   const [newNote, setNewNote] = useState('');
   const authHeaders = { 'x-user-id': currentUser.id.toString() };
 
   useEffect(() => {
-    fetch(`/api/admin/courses/${course.id}/lessons`, { headers: authHeaders })
+    fetch(`/api/courses/${course.id}/curriculum`, { headers: authHeaders })
       .then(res => res.json())
       .then(data => {
-        setLessons(data);
-        if (data.length > 0) setActiveLesson(data[0]);
+        setCurriculum(data);
+        if (data.length > 0 && data[0].lessons.length > 0) {
+          setActiveLesson(data[0].lessons[0]);
+          setExpandedModules([data[0].id]);
+        }
       });
   }, [course.id]);
 
@@ -1562,7 +1643,7 @@ const CourseViewer = ({ course, currentUser, onBack }: { course: any, currentUse
       body: JSON.stringify({ lessonId: activeLesson.id, content: newNote })
     });
     if (res.ok) {
-      setNotes([...notes, { content: newNote, created_at: new Date().toISOString() }]);
+      setNotes([{ content: newNote, created_at: new Date().toISOString() }, ...notes]);
       setNewNote('');
     }
   };
@@ -1578,79 +1659,201 @@ const CourseViewer = ({ course, currentUser, onBack }: { course: any, currentUse
     }
   };
 
+  const toggleModule = (moduleId: number) => {
+    setExpandedModules(prev => 
+      prev.includes(moduleId) ? prev.filter(id => id !== moduleId) : [...prev, moduleId]
+    );
+  };
+
   return (
     <div className="space-y-8">
-      <button onClick={onBack} className="flex items-center gap-2 text-brand-teal font-bold hover:text-brand-orange transition-colors">
-        <ChevronRight className="w-4 h-4 rotate-180" /> Back to Dashboard
-      </button>
+      <div className="flex items-center justify-between">
+        <button onClick={onBack} className="flex items-center gap-2 text-brand-teal font-bold hover:text-brand-orange transition-colors">
+          <ChevronRight className="w-4 h-4 rotate-180" /> Back to Dashboard
+        </button>
+        <div className="flex items-center gap-4">
+          <span className="text-[10px] font-bold text-brand-orange uppercase tracking-widest">{course.difficulty}</span>
+          <span className="text-[10px] font-bold text-brand-teal bg-brand-teal/5 px-2 py-0.5 rounded-md">{course.category}</span>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           <div className="aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl relative group">
             {activeLesson ? (
-              <div className="w-full h-full flex items-center justify-center text-white">
-                <Play className="w-20 h-20 opacity-20 group-hover:opacity-100 transition-opacity cursor-pointer" />
-                <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end">
-                  <div>
-                    <h4 className="text-xl font-bold">{activeLesson.title}</h4>
-                    <p className="text-sm opacity-60">Lesson {lessons.indexOf(activeLesson) + 1} of {lessons.length}</p>
+              <div className="w-full h-full flex flex-col">
+                <iframe 
+                  src={activeLesson.video_url} 
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                  allowFullScreen
+                />
+                <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end pointer-events-none">
+                  <div className="bg-brand-teal/90 backdrop-blur-md p-4 rounded-2xl pointer-events-auto">
+                    <h4 className="text-lg font-bold text-white leading-tight">{activeLesson.title}</h4>
+                    <p className="text-[10px] text-white/60 uppercase tracking-widest font-bold">Lesson {activeLesson.order_index}</p>
                   </div>
-                  <button onClick={handleToggleProgress} className="px-6 py-2 bg-brand-teal text-white rounded-xl font-bold text-sm">Mark Complete</button>
+                  <button 
+                    onClick={handleToggleProgress} 
+                    className="pointer-events-auto px-6 py-2 bg-brand-orange text-white rounded-xl font-bold text-sm shadow-xl hover:scale-105 transition-transform"
+                  >
+                    Mark Complete
+                  </button>
                 </div>
               </div>
             ) : (
               <div className="w-full h-full flex items-center justify-center text-white/20">Select a lesson to start</div>
             )}
           </div>
-
-          <div className="glass-card p-8 rounded-3xl">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-brand-teal">My Notes</h3>
-              <FileText className="w-5 h-5 text-brand-ink/20" />
-            </div>
-            <form onSubmit={handleAddNote} className="mb-6">
-              <textarea 
-                value={newNote}
-                onChange={e => setNewNote(e.target.value)}
-                placeholder="Write a note for this lesson..."
-                className="w-full px-4 py-3 bg-brand-cream border border-brand-ink/5 rounded-xl text-sm h-24 mb-3"
-              />
-              <button type="submit" className="px-6 py-2 bg-brand-teal text-white rounded-xl font-bold text-sm">Save Note</button>
-            </form>
-            <div className="space-y-4">
-              {notes.map((note, i) => (
-                <div key={i} className="p-4 bg-brand-cream rounded-xl border border-brand-ink/5">
-                  <p className="text-sm text-brand-ink/70 mb-2">{note.content}</p>
-                  <p className="text-[10px] text-brand-ink/30 font-bold uppercase">{new Date(note.created_at).toLocaleString()}</p>
+          {activeLesson?.document_url && (
+            <div className="flex items-center justify-between p-6 bg-brand-orange/5 border border-brand-orange/10 rounded-3xl">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-brand-orange/10 text-brand-orange rounded-2xl flex items-center justify-center">
+                  <FileText className="w-6 h-6" />
                 </div>
-              ))}
+                <div>
+                  <h4 className="font-bold text-brand-teal">Lesson Resources</h4>
+                  <p className="text-xs text-brand-ink/40">Download the accompanying document for this lesson.</p>
+                </div>
+              </div>
+              <a 
+                href={activeLesson.document_url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="px-6 py-2 bg-brand-orange text-white rounded-xl font-bold text-sm shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" /> Download PDF
+              </a>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="glass-card p-8 rounded-3xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-brand-teal">Learning Outcomes</h3>
+                <Award className="w-5 h-5 text-brand-orange" />
+              </div>
+              <ul className="space-y-3">
+                {course.learning_outcomes?.map((outcome: string, i: number) => (
+                  <li key={i} className="flex items-start gap-3 text-sm text-brand-ink/70">
+                    <CheckCircle2 className="w-4 h-4 text-brand-teal mt-0.5 flex-shrink-0" />
+                    {outcome}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="glass-card p-8 rounded-3xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-brand-teal">My Notes</h3>
+                <FileText className="w-5 h-5 text-brand-ink/20" />
+              </div>
+              <form onSubmit={handleAddNote} className="mb-6">
+                <textarea 
+                  value={newNote}
+                  onChange={e => setNewNote(e.target.value)}
+                  placeholder="Write a note for this lesson..."
+                  className="w-full px-4 py-3 bg-brand-cream border border-brand-ink/5 rounded-xl text-sm h-24 mb-3 focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
+                />
+                <button type="submit" className="w-full py-2 bg-brand-teal text-white rounded-xl font-bold text-sm hover:bg-brand-teal/90 transition-colors">Save Note</button>
+              </form>
+              <div className="space-y-4 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                {notes.map((note, i) => (
+                  <div key={i} className="p-4 bg-brand-cream rounded-xl border border-brand-ink/5">
+                    <p className="text-sm text-brand-ink/70 mb-2">{note.content}</p>
+                    <p className="text-[10px] text-brand-ink/30 font-bold uppercase">{new Date(note.created_at).toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="glass-card p-8 rounded-3xl md:col-span-2">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-brand-teal">Course Resources</h3>
+                <Download className="w-5 h-5 text-brand-ink/20" />
+              </div>
+              {course.syllabus_url ? (
+                <div className="flex items-center justify-between p-4 bg-brand-teal/5 rounded-2xl border border-brand-teal/10">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-brand-teal/10 text-brand-teal rounded-xl flex items-center justify-center">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-brand-teal text-sm">Course Syllabus & Reference Guide</p>
+                      <p className="text-[10px] text-brand-ink/40">Full curriculum documentation and strategic frameworks.</p>
+                    </div>
+                  </div>
+                  <a 
+                    href={course.syllabus_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="px-6 py-2 bg-brand-teal text-white rounded-xl font-bold text-xs shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" /> Download
+                  </a>
+                </div>
+              ) : (
+                <p className="text-sm text-brand-ink/30 italic text-center py-4">No course-wide resources available for this program.</p>
+              )}
             </div>
           </div>
         </div>
 
         <div className="space-y-6">
-          <div className="glass-card p-8 rounded-3xl">
-            <h3 className="text-xl font-bold text-brand-teal mb-6">Course Content</h3>
-            <div className="space-y-3">
-              {lessons.map((lesson, i) => (
-                <button 
-                  key={lesson.id}
-                  onClick={() => setActiveLesson(lesson)}
-                  className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all text-left ${
-                    activeLesson?.id === lesson.id ? 'bg-brand-teal text-white shadow-lg' : 'hover:bg-brand-ink/5 text-brand-ink/60'
-                  }`}
-                >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${
-                    activeLesson?.id === lesson.id ? 'bg-white/20' : 'bg-brand-ink/5'
-                  }`}>
-                    {i + 1}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-sm leading-tight">{lesson.title}</div>
-                    <div className="text-[10px] opacity-60">{lesson.duration}m</div>
-                  </div>
-                  {activeLesson?.id === lesson.id && <PlayCircle className="w-4 h-4" />}
-                </button>
+          <div className="glass-card p-8 rounded-3xl h-[calc(100vh-200px)] flex flex-col">
+            <h3 className="text-xl font-bold text-brand-teal mb-6">Course Curriculum</h3>
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4">
+              {curriculum.map((module, i) => (
+                <div key={module.id} className="space-y-2">
+                  <button 
+                    onClick={() => toggleModule(module.id)}
+                    className="w-full flex items-center justify-between p-4 bg-brand-ink/5 rounded-2xl hover:bg-brand-ink/10 transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-6 h-6 rounded-lg bg-brand-teal/10 text-brand-teal flex items-center justify-center text-xs font-bold">
+                        {i + 1}
+                      </div>
+                      <span className="font-bold text-sm text-brand-teal text-left">{module.title}</span>
+                    </div>
+                    {expandedModules.includes(module.id) ? (
+                      <ChevronUp className="w-4 h-4 text-brand-ink/30 group-hover:text-brand-teal" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-brand-ink/30 group-hover:text-brand-teal" />
+                    )}
+                  </button>
+                  
+                  <AnimatePresence>
+                    {expandedModules.includes(module.id) && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden space-y-1 pl-4"
+                      >
+                        {module.lessons.map((lesson: any, j: number) => (
+                          <button 
+                            key={lesson.id}
+                            onClick={() => setActiveLesson(lesson)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left group ${
+                              activeLesson?.id === lesson.id ? 'bg-brand-teal text-white shadow-md' : 'hover:bg-brand-ink/5 text-brand-ink/60'
+                            }`}
+                          >
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                              activeLesson?.id === lesson.id ? 'bg-white/20' : 'bg-brand-ink/5'
+                            }`}>
+                              {j + 1}
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-bold text-xs leading-tight">{lesson.title}</div>
+                              <div className="text-[9px] opacity-60 font-medium uppercase tracking-wider">{lesson.duration}m</div>
+                            </div>
+                            {activeLesson?.id === lesson.id && <PlayCircle className="w-4 h-4" />}
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               ))}
             </div>
           </div>
@@ -1841,7 +2044,8 @@ const LearningDashboard = ({
 const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
   const [activeTab, setActiveTab] = useState('command-center');
   const [searchQuery, setSearchQuery] = useState('');
-  const [courses, setCourses] = useState<Course[]>(MOCK_COURSES);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [viewingCourse, setViewingCourse] = useState<any>(null);
   const [bookmarks, setBookmarks] = useState<number[]>([]);
@@ -1854,21 +2058,31 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [coursesRes, bookmarksRes, myCoursesRes, profileRes, dashboardStatsRes] = await Promise.all([
+        const [coursesRes, categoriesRes, bookmarksRes, myCoursesRes, profileRes, dashboardStatsRes] = await Promise.all([
           fetch('/api/courses'),
+          fetch('/api/categories'),
           fetch('/api/bookmarks', { headers: authHeaders }),
           fetch('/api/my-courses', { headers: authHeaders }),
           fetch('/api/profile', { headers: authHeaders }),
           fetch('/api/user/dashboard-stats', { headers: authHeaders })
         ]);
         
+        let categoryMap: any = {};
+        if (categoriesRes.ok) {
+          const cats = await categoriesRes.json();
+          setCategories(cats);
+          cats.forEach((cat: any) => {
+            categoryMap[cat.id] = cat.name;
+          });
+        }
+
         if (coursesRes.ok) {
           const data = await coursesRes.json();
           setCourses(data.map((c: any) => ({
             id: c.id,
             title: c.title,
             description: c.description,
-            category: c.category_id === 1 ? 'AI' : c.category_id === 2 ? 'Scaling' : c.category_id === 3 ? 'Branding' : 'Leadership',
+            category: categoryMap[c.category_id] || 'General',
             difficulty: c.difficulty,
             thumbnail: c.thumbnail_url || `https://picsum.photos/seed/${c.id}/800/450`,
             status: c.status,
@@ -1934,12 +2148,20 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
   const filteredCourses = courses.filter(course => 
     course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     course.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    course.category.toLowerCase().includes(searchQuery.toLowerCase())
+    (course.category && course.category.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  const enrolledCourses = courses.filter(c => myCourses.includes(c.id));
+  const recommendedCourses = courses.filter(c => !myCourses.includes(c.id));
+
+  const displayCourses = searchQuery 
+    ? filteredCourses 
+    : enrolledCourses.length > 0 ? enrolledCourses : courses;
 
   const navItems = [
     { id: 'command-center', label: 'Command Center', icon: LayoutDashboard },
-    { id: 'my-courses', label: 'My Courses', icon: BookOpen },
+    { id: 'academy', label: 'Academy Catalog', icon: BookOpen },
+    { id: 'my-courses', label: 'My Learning', icon: GraduationCap },
     { id: 'analytics', label: 'Growth Analytics', icon: TrendingUp },
     { id: 'community', label: 'Community', icon: Users },
   ];
@@ -2012,13 +2234,14 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
           <div>
             <h1 className="text-4xl font-bold text-brand-teal mb-2">
               {activeTab === 'command-center' ? `Welcome back, ${currentUser.name}` : 
+               activeTab === 'academy' ? 'Academy Catalog' :
                activeTab === 'my-courses' ? 'My Learning Path' :
                activeTab === 'analytics' ? 'Growth Analytics' :
                activeTab === 'community' ? 'Community Hub' : 
                activeTab === 'admin-panel' ? 'Admin Control Center' : 'Settings'}
             </h1>
             <p className="text-brand-ink/50">
-              {activeTab === 'command-center' ? "You've completed 2 lessons this week. Keep it up!" : 
+              {activeTab === 'command-center' ? `You've completed ${dashboardStats.lessonsThisWeek || 0} lessons this week. Keep it up!` : 
                activeTab === 'admin-panel' ? "Manage your academy infrastructure and users." :
                "Manage your journey and connect with other leaders."}
             </p>
@@ -2071,7 +2294,7 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
           >
-            {activeTab === 'command-center' && viewingCourse && (
+            {viewingCourse && (
               <CourseViewer 
                 course={viewingCourse} 
                 currentUser={currentUser} 
@@ -2085,15 +2308,32 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
                   <section>
                     <div className="flex items-center justify-between mb-6">
                       <h2 className="text-2xl font-bold text-brand-teal">
-                        {searchQuery ? `Search Results (${filteredCourses.length})` : 'Continue Watching'}
+                        {searchQuery ? `Search Results (${filteredCourses.length})` : 
+                         enrolledCourses.length > 0 ? 'Continue Watching' : 'Start Your Journey'}
                       </h2>
-                      {!searchQuery && <a href="#" className="text-sm font-bold text-brand-orange hover:underline">View All</a>}
+                      {!searchQuery && (
+                        <button 
+                          onClick={() => setActiveTab('academy')}
+                          className="text-sm font-bold text-brand-orange hover:underline"
+                        >
+                          View All
+                        </button>
+                      )}
                     </div>
                     <div className="grid md:grid-cols-2 gap-6">
-                      {filteredCourses.length > 0 ? (
-                        filteredCourses.slice(0, searchQuery ? undefined : 2).map(course => (
+                      {displayCourses.length > 0 ? (
+                        displayCourses.slice(0, searchQuery ? undefined : 2).map(course => (
                           <div key={course.id} className="relative group">
-                            <CourseCard course={course} />
+                            <CourseCard 
+                              course={course} 
+                              onClick={() => {
+                                if (myCourses.includes(course.id)) {
+                                  setViewingCourse(course);
+                                } else {
+                                  handleEnroll(course.id);
+                                }
+                              }}
+                            />
                             <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button 
                                 onClick={() => handleToggleBookmark(course.id)}
@@ -2138,9 +2378,18 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
                         </div>
                       </div>
                       <div className="grid md:grid-cols-2 gap-6">
-                        {courses.slice(2, 4).map(course => (
+                        {recommendedCourses.slice(0, 2).map(course => (
                           <div key={course.id} className="relative group">
-                            <CourseCard course={course} />
+                            <CourseCard 
+                              course={course} 
+                              onClick={() => {
+                                if (myCourses.includes(course.id)) {
+                                  setViewingCourse(course);
+                                } else {
+                                  handleEnroll(course.id);
+                                }
+                              }}
+                            />
                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                               {myCourses.includes(course.id) ? (
                                 <button 
@@ -2172,19 +2421,19 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
                       <div>
                         <div className="flex justify-between text-sm font-bold mb-2">
                           <span className="text-brand-ink/60">Overall Completion</span>
-                          <span className="text-brand-orange">32%</span>
+                          <span className="text-brand-orange">{dashboardStats.overallCompletion || 0}%</span>
                         </div>
                         <div className="w-full h-2 bg-brand-ink/5 rounded-full overflow-hidden">
-                          <div className="h-full bg-brand-orange w-[32%]" />
+                          <div className="h-full bg-brand-orange transition-all duration-500" style={{ width: `${dashboardStats.overallCompletion || 0}%` }} />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="bg-brand-cream p-4 rounded-2xl">
-                          <p className="text-2xl font-bold text-brand-teal">12</p>
+                          <p className="text-2xl font-bold text-brand-teal">{dashboardStats.lessonsDone || 0}</p>
                           <p className="text-[10px] font-bold text-brand-ink/40 uppercase tracking-wider">Lessons Done</p>
                         </div>
                         <div className="bg-brand-cream p-4 rounded-2xl">
-                          <p className="text-2xl font-bold text-brand-teal">4</p>
+                          <p className="text-2xl font-bold text-brand-teal">{dashboardStats.certificates || 0}</p>
                           <p className="text-[10px] font-bold text-brand-ink/40 uppercase tracking-wider">Certificates</p>
                         </div>
                       </div>
@@ -2212,7 +2461,65 @@ const Dashboard = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
               </div>
             )}
 
-            {activeTab === 'my-courses' && (
+            {activeTab === 'academy' && !viewingCourse && (
+              <div className="space-y-8">
+                <section>
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-2xl font-bold text-brand-teal">Full Academy Catalog</h2>
+                    <div className="flex gap-2">
+                      {['All', 'Strategy', 'Marketing', 'Leadership'].map(cat => (
+                        <button key={cat} className="px-4 py-1.5 rounded-full bg-white border border-brand-ink/5 text-xs font-bold text-brand-ink/40 hover:border-brand-orange hover:text-brand-orange transition-all">
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredCourses.map(course => (
+                        <div key={course.id} className="relative group">
+                          <CourseCard 
+                            course={course} 
+                            onClick={() => {
+                              if (myCourses.includes(course.id)) {
+                                setViewingCourse(course);
+                              } else {
+                                handleEnroll(course.id);
+                              }
+                            }}
+                          />
+                          <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => handleToggleBookmark(course.id)}
+                            className={`p-2 rounded-lg shadow-lg transition-colors ${bookmarks.includes(course.id) ? 'bg-brand-orange text-white' : 'bg-white text-brand-ink/40 hover:text-brand-orange'}`}
+                          >
+                            <Bookmark className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                          {myCourses.includes(course.id) ? (
+                            <button 
+                              onClick={() => setViewingCourse(course)}
+                              className="pointer-events-auto px-6 py-2 bg-brand-teal text-white rounded-xl font-bold shadow-xl flex items-center gap-2"
+                            >
+                              <PlayCircle className="w-5 h-5" /> Resume
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => handleEnroll(course.id)}
+                              className="pointer-events-auto px-6 py-2 bg-brand-orange text-white rounded-xl font-bold shadow-xl flex items-center gap-2"
+                            >
+                              <Unlock className="w-5 h-5" /> Enroll Now
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {activeTab === 'my-courses' && !viewingCourse && (
               <LearningDashboard 
                 currentUser={currentUser}
                 courses={courses}
@@ -2399,6 +2706,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMessage, setAuthModalMessage] = useState('');
   const [courses, setCourses] = useState<Course[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
 
   // Simulate loading and check for persisted session
   const [isLoading, setIsLoading] = useState(true);
@@ -2408,22 +2716,41 @@ export default function App() {
       setUser(JSON.parse(savedUser));
     }
     
-    // Fetch public courses
-    fetch('/api/courses')
-      .then(res => res.json())
-      .then(data => {
-        setCourses(data.map((c: any) => ({
-          id: c.id,
-          title: c.title,
-          description: c.description,
-          category: c.category_id === 1 ? 'AI' : c.category_id === 2 ? 'Scaling' : 'Business',
-          difficulty: c.difficulty,
-          thumbnail: c.thumbnail_url || `https://picsum.photos/seed/${c.id}/800/450`
-        })));
-      })
-      .catch(err => console.error('Failed to fetch public courses', err));
+    const fetchData = async () => {
+      try {
+        const [coursesRes, categoriesRes] = await Promise.all([
+          fetch('/api/courses'),
+          fetch('/api/categories')
+        ]);
 
-    setTimeout(() => setIsLoading(false), 1000);
+        let categoryMap: any = {};
+        if (categoriesRes.ok) {
+          const cats = await categoriesRes.json();
+          setCategories(cats);
+          cats.forEach((cat: any) => {
+            categoryMap[cat.id] = cat.name;
+          });
+        }
+
+        if (coursesRes.ok) {
+          const data = await coursesRes.json();
+          setCourses(data.map((c: any) => ({
+            id: c.id,
+            title: c.title,
+            description: c.description,
+            category: categoryMap[c.category_id] || 'General',
+            difficulty: c.difficulty,
+            thumbnail: c.thumbnail_url || `https://picsum.photos/seed/${c.id}/800/450`
+          })));
+        }
+      } catch (err) {
+        console.error('Failed to fetch public data', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
   const handleLogin = (userData: any) => {
@@ -2482,7 +2809,7 @@ export default function App() {
             </div>
             
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {(courses.length > 0 ? courses : MOCK_COURSES).slice(0, 4).map(course => (
+              {courses.slice(0, 4).map(course => (
                 <CourseCard 
                   key={course.id} 
                   course={course} 
@@ -2498,19 +2825,15 @@ export default function App() {
           <div className="max-w-7xl mx-auto">
             <h2 className="text-4xl font-bold text-brand-teal text-center mb-16">Master Every Dimension</h2>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
-              {[
-                { name: "AI Systems", icon: "🤖" },
-                { name: "Branding", icon: "🎨" },
-                { name: "Scaling", icon: "🚀" },
-                { name: "Leadership", icon: "👑" },
-                { name: "Operations", icon: "⚙️" }
-              ].map((cat, i) => (
+              {categories.slice(0, 5).map((cat, i) => (
                 <motion.div 
                   key={i}
                   whileHover={{ scale: 1.05 }}
                   className="glass-card p-8 rounded-3xl text-center hover:bg-brand-orange hover:text-white transition-all group cursor-pointer"
                 >
-                  <div className="text-4xl mb-4 group-hover:scale-125 transition-transform">{cat.icon}</div>
+                  <div className="text-4xl mb-4 group-hover:scale-125 transition-transform">
+                    {cat.slug === 'ai' ? '🤖' : cat.slug === 'branding' ? '🎨' : cat.slug === 'scaling' ? '🚀' : cat.slug === 'leadership' ? '👑' : '⚙️'}
+                  </div>
                   <span className="font-bold tracking-tight">{cat.name}</span>
                 </motion.div>
               ))}
